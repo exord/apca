@@ -1,4 +1,5 @@
 from math import log
+import warnings
 
 import numpy as np
 import numpy.random
@@ -55,6 +56,14 @@ class Sampler(object):
         """
         return self._lnprob
 
+    @property
+    def acceptancerate(self):
+        """
+        A pointer to the acceptance rate
+        :return:
+        """
+        return self.compute_acceptancerate()
+
     def get_lnprob(self, p):
         """
         Compute probability at a given position p
@@ -79,6 +88,10 @@ class Sampler(object):
         self.nlinks = 0
         self._chain = np.zeros((0, self.dim))
         self._lnprob = np.zeros(0)
+
+    def compute_acceptancerate(self):
+        return np.cumsum(self.naccepted)/np.arange(1, self.nlinks+2,
+                                                   dtype=float)
 
 
 class MetropolisSampler(Sampler):
@@ -157,8 +170,23 @@ class MetropolisSampler(Sampler):
 
 def compute_covariance(m):
     # Subtract mean from each parameter
+
+    c = np.cov(m, rowvar=0)
+
+    try:
+        d = np.diag(c)
+    except ValueError:  # scalar covariance
+        # nan if incorrect value (nan, inf, 0), 1 otherwise
+        return c / c
+    # Product of covariances
+    covprod = np.sqrt(np.multiply.outer(d, d))
+    return c / covprod, m.mean(axis=0), np.sqrt(np.diag(covprod))
+
+    """
     mean_p = np.mean(m, axis=0)
-    return np.cov(m - mean_p, rowvar=0), mean_p
+    std_p = np.std(m, axis=0)
+    return np.cov(m - mean_p, rowvar=0), mean_p, std_p
+    """
 
 
 class AdaptivePCASampler(MetropolisSampler):
@@ -183,9 +211,14 @@ class AdaptivePCASampler(MetropolisSampler):
         self.npca = npca
         self.nupdatepca = kwargs.pop('nupdatepca', np.inf)
 
+        if self.npca > self.startpca:
+            warnings.warn('Npca > Startpca; changing Npca = startpca')
+            self.npca = self.startpca
+
         # Initialise change of basis matrix
         self.cobmatrix = np.empty((dim, dim))
-
+        self.meanp = None
+        self.stdp = None
         #
         # Initialise arrays for bookkeeping
         #
@@ -249,7 +282,7 @@ class AdaptivePCASampler(MetropolisSampler):
             self.jump[jumpind] += 1
 
             # Get scale from proposal covariance
-            jumpscale = np.diag(self.proposalcov)
+            jumpscale = np.sqrt(np.diag(self.proposalcov))
 
             # Proposed jump (for single parameter, zero for the rest)
             proposedjump = self.jump * np.random.randn() * jumpscale
@@ -270,14 +303,16 @@ class AdaptivePCASampler(MetropolisSampler):
         else:
             # Make proposal in rotated parameter space.
             # Convert last chain link to principal component space
-            startingpoint = np.dot(self.cobmatrix, self.chain[self.nlinks])
+            x = (self.chain[self.nlinks] - self.meanp)/self.stdp
+            startingpoint = np.dot(self.cobmatrix, x)
 
         newpoint = startingpoint + proposedjump
 
         if self.nlinks < self.startpca:
             return newpoint
         else:
-            return np.dot(self.cobmatrix.T, newpoint)
+            # Convert back to parameter space
+            return np.dot(self.cobmatrix.T, newpoint) * self.stdp + self.meanp
 
     def pca(self):
         # Update proposal scales and PCA matrix.
@@ -286,12 +321,12 @@ class AdaptivePCASampler(MetropolisSampler):
         else:
             print('Updating covariance matrix for PCA')
 
-        # Compute covariance matrix on last npca steps
-        covmatrix, meanp = compute_covariance(self.chain[self.nlinks -
-                                                         self.npca:self.nlinks])
+        # Compute matrix of correlation coefficients on last npca steps
+        corrmatrix, self.meanp, self.stdp = compute_covariance(
+            self.chain[self.nlinks - self.npca:self.nlinks])
 
         # Compute eigenvectors of covariance matrix
-        eigval, eigvec = scipy.linalg.eigh(covmatrix)
+        eigval, eigvec = scipy.linalg.eigh(corrmatrix)
 
         # Set new change of basis matrix
         self.cobmatrix = eigvec.T
@@ -354,13 +389,12 @@ class AdaptivePCASampler(MetropolisSampler):
 
         # Update proposal scale
         newpropsalcov = self.proposalcov.copy()
-        newscale = np.diag(self.proposalcov) * k
+        # New scale for covariance.
+        newscale = np.diag(self.proposalcov) * k**2
         newscale = np.where(newscale != 0, newscale,
                             self.chain[self.nlinks] * 0.1)
 
         newpropsalcov[np.diag_indices_from(newpropsalcov)] = newscale
-
-        self.proposalcov = newpropsalcov
 
         self.last_scalefactor = k
 
@@ -368,15 +402,16 @@ class AdaptivePCASampler(MetropolisSampler):
         self.nproposed_since_update[self.jump != 0] = 0
         self.naccepted_since_update[self.jump != 0] = 0
 
-        """
         if self.verbose:
             for j, upbool in enumerate(condupdate):
                 if upbool:
                     print('Scale adjusted for parameter {}; old scale: {:.2e}; '
                           'new scale: {:.2e}'
-                          ''.format(j, np.diag(self.proposalcovrecord[-2])[j],
-                                    np.diag(newpropsalcov)[j]))
-        """
+                          ''.format(j,
+                                    np.sqrt(np.diag(self.proposalcov)[j]),
+                                    np.sqrt(np.diag(newpropsalcov)[j])))
+        # Update proposal covariance
+        self.proposalcov = newpropsalcov
         return
 
     def initialise_arrays(self, n):
@@ -445,8 +480,16 @@ class AdaptivePCASampler(MetropolisSampler):
 
         for i in xrange(n):
 
-            if self.verbose and i % 500 == 0:
-                print('#### Iteration {} out of {}'.format(i, n))
+            if self.verbose:
+                if i % 500 == 0:
+                    print('#### Iteration {} out of {}'.format(i, n))
+                if i % 3000 == 0:
+                    for j in range(self.chain.shape[1]):
+                        print('Param {0}: {1}'.format(j,
+                                                      self.chain[self.nlinks, j]
+                                                      ))
+                    print('## ln(prior*likelihood)'
+                          ' = {}'.format(self.lnprob[self.nlinks]))
 
             # Update PCA matrix every nupdatepca iterations.
             if self.nlinks >= self.startpca and \
