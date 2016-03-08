@@ -180,13 +180,13 @@ def compute_covariance(m):
         return c / c
     # Product of covariances
     covprod = np.sqrt(np.multiply.outer(d, d))
-    return c / covprod, m.mean(axis=0), np.sqrt(np.diag(covprod))
 
     """
     mean_p = np.mean(m, axis=0)
     std_p = np.std(m, axis=0)
     return np.cov(m - mean_p, rowvar=0), mean_p, std_p
     """
+    return c / covprod, m.mean(axis=0), np.sqrt(np.diag(covprod))
 
 
 class AdaptivePCASampler(MetropolisSampler):
