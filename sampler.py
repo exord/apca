@@ -168,14 +168,15 @@ class MetropolisSampler(Sampler):
             return 0
 
 
-def compute_covariance(m):
-    # Subtract mean from each parameter
+def compute_corrmatrix(m):
 
-    c = np.cov(m, rowvar=0)
+    # Compute covariance matrix (unbiassed)
+    c = np.cov(m, rowvar=0, ddof=1)
 
     try:
         d = np.diag(c)
-    except ValueError:  # scalar covariance
+    except ValueError:
+        # scalar covariance
         # nan if incorrect value (nan, inf, 0), 1 otherwise
         return c / c
     # Product of covariances
@@ -186,7 +187,8 @@ def compute_covariance(m):
     std_p = np.std(m, axis=0)
     return np.cov(m - mean_p, rowvar=0), mean_p, std_p
     """
-    return c / covprod, m.mean(axis=0), np.sqrt(np.diag(covprod))
+    # WARNING! An extra sqrt in return!?
+    return c / covprod, m.mean(axis=0), np.sqrt(d)
 
 
 class AdaptivePCASampler(MetropolisSampler):
@@ -314,15 +316,17 @@ class AdaptivePCASampler(MetropolisSampler):
             # Convert back to parameter space
             return np.dot(self.cobmatrix.T, newpoint) * self.stdp + self.meanp
 
-    def pca(self):
-        # Update proposal scales and PCA matrix.
+    def make_cobmatrix(self):
+        # Update proposal scales and CoB matrix.
         if self.nlinks == self.startpca:
-            print('STARTING PRINCIPAL COMPONENT ANALYSIS')
+            print('Buidling first change-of-basis matrix.')
+            print('#####')
         else:
-            print('Updating covariance matrix for PCA')
+            print('Updating change-of-basis matrix.')
+            print('#####')
 
         # Compute matrix of correlation coefficients on last npca steps
-        corrmatrix, self.meanp, self.stdp = compute_covariance(
+        corrmatrix, self.meanp, self.stdp = compute_corrmatrix(
             self.chain[self.nlinks - self.npca:self.nlinks])
 
         # Compute eigenvectors of covariance matrix
@@ -494,7 +498,7 @@ class AdaptivePCASampler(MetropolisSampler):
             # Update PCA matrix every nupdatepca iterations.
             if self.nlinks >= self.startpca and \
                (self.nlinks - self.startpca) % self.nupdatepca == 0:
-                self.pca()
+                self.make_cobmatrix()
 
             # Sample
             acceptflag = self.sample()
