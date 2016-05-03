@@ -181,7 +181,8 @@ class ChangeOfBasisSampler(MetropolisSampler):
                                    target_rate)
 
         # condition for updating
-        condupdate = ((acceptance_rate - target_rate) ** 2 > update_stat) * (self.nproposed_since_update > 100)
+        condupdate = ((acceptance_rate - target_rate) ** 2 > update_stat) * \
+                     (self.nproposed_since_update > 100)
 
         # If no parameter needs updating, exit.
         if np.all(~condupdate):
