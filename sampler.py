@@ -7,6 +7,29 @@ import scipy
 from numpy.random import multivariate_normal as mvn
 
 
+def compute_corrmatrix(m):
+
+    # Compute covariance matrix (unbiassed)
+    c = np.cov(m, rowvar=0, ddof=1)
+
+    try:
+        d = np.diag(c)
+    except ValueError:
+        # scalar covariance
+        # nan if incorrect value (nan, inf, 0), 1 otherwise
+        return c / c
+    # Product of covariances
+    covprod = np.sqrt(np.multiply.outer(d, d))
+
+    """
+    mean_p = np.mean(m, axis=0)
+    std_p = np.std(m, axis=0)
+    return np.cov(m - mean_p, rowvar=0), mean_p, std_p
+    """
+    # WARNING! An extra sqrt in return!?
+    return c / covprod, m.mean(axis=0), np.sqrt(d)
+
+
 class Sampler(object):
     """
     A generic class for samplers.
@@ -168,29 +191,6 @@ class MetropolisSampler(Sampler):
             return 0
 
 
-def compute_corrmatrix(m):
-
-    # Compute covariance matrix (unbiassed)
-    c = np.cov(m, rowvar=0, ddof=1)
-
-    try:
-        d = np.diag(c)
-    except ValueError:
-        # scalar covariance
-        # nan if incorrect value (nan, inf, 0), 1 otherwise
-        return c / c
-    # Product of covariances
-    covprod = np.sqrt(np.multiply.outer(d, d))
-
-    """
-    mean_p = np.mean(m, axis=0)
-    std_p = np.std(m, axis=0)
-    return np.cov(m - mean_p, rowvar=0), mean_p, std_p
-    """
-    # WARNING! An extra sqrt in return!?
-    return c / covprod, m.mean(axis=0), np.sqrt(d)
-
-
 class AdaptivePCASampler(MetropolisSampler):
     """
     A class implementing the adaptive PCA sampling algorithm of Diaz+2014.
@@ -239,7 +239,7 @@ class AdaptivePCASampler(MetropolisSampler):
         self.nproposed_since_update = np.zeros(dim)
         self.naccepted_since_update = np.zeros(dim)
 
-        # Initialise update interval per parameter
+        # Initia    lise update interval per parameter
         self.update_interval = np.full(dim, 2)
         self.last_scalefactor = np.full(dim, np.nan)
 
@@ -511,5 +511,3 @@ class AdaptivePCASampler(MetropolisSampler):
             self.update_proposal_scale(0.25)
 
         return
-
-__author__ = 'Rodrigo F. Diaz'
