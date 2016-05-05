@@ -66,9 +66,12 @@ class Sampler(object):
         """
         return self.lnprobfn(p, *self.lnprobfnargs, **self.lnprobfnkwargs)
 
+    def make_proposal(self):
+        raise NotImplementedError('To be implemented at the sub-class level')
+
     def sample(self, *args, **kwargs):
-        raise NotImplementedError("The sampling routine must be implemented "
-                                  "by subclasses")
+        raise NotImplementedError('The sampling routine must be implemented '
+                                  'by subclasses')
 
     def run_mcmc(self, n, p0):
         """

@@ -58,12 +58,19 @@ class MetropolisSampler(Sampler):
     def make_proposal(self):
         raise NotImplementedError('To be implemented at the sub-class level')
 
+    def post_proposal(self, proposal):
+        return proposal
+
     def sample(self):
         # Compute ln probability for initial step
         lnprob0 = self.last_lnprob
 
         # Propose a new chain state
         proposal = self.make_proposal()
+
+        # Here, add implementation of post-jump function to deal with
+        # circular parameters such as omega or L0
+        proposal = self.post_proposal(proposal)
 
         # Compute log(prob) in proposal state.
         lnprob1 = self.get_lnprob(proposal)
