@@ -5,7 +5,6 @@ from .cobsampler import ChangeOfBasisSampler
 
 
 class Test(object):
-
     """
     Super class implementing tests for CoBSampler. Sub-classes should specify
     target distribution.
@@ -13,15 +12,20 @@ class Test(object):
 
     def __init__(self, ndim, target, nsteps):
         self.ndim = ndim
-        self.target = target
+        self.targetdist = target
         self.niterations = nsteps
 
     def run(self):
         # initialise sampler
-        sampler = ChangeOfBasisSampler(self.ndim, self.target, (), {})
+        sampler = ChangeOfBasisSampler(self.ndim, self.targetdist.logpdf, (),
+                                       {}, startpca=np.inf)
+                                       # startpca=self.niterations/10,
+                                       # nupdatepca=self.niterations/10)
 
         p0 = np.zeros(self.ndim)
         sampler.run_mcmc(self.niterations, p0)
+        chain = sampler.chain
+
         return sampler
 
 
@@ -29,6 +33,7 @@ class MultinormalTest(Test):
     """
     Class implementing test on multinormal distribution.
     """
+
     def __init__(self, nsteps, ndim=2, cov=None):
         """
 
@@ -48,7 +53,6 @@ class TargetDistribution(object):
 
 
 class Multinormal(TargetDistribution):
-
     def __init__(self, ndim=2, cov=None):
 
         self.ndim = ndim
@@ -76,3 +80,5 @@ class Multinormal(TargetDistribution):
         """
         return self.dist.pdf(x)
 
+    def logpdf(self, x):
+        return self.dist.logpdf(x)
