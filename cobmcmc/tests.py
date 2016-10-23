@@ -10,21 +10,26 @@ class Test(object):
     target distribution.
     """
 
-    def __init__(self, ndim, target, nsteps):
+    def __init__(self, ndim, target, nsteps, cobparams={}):
         self.ndim = ndim
         self.targetdist = target
         self.niterations = nsteps
 
+        self.firscob = cobparams.pop('firstcob', 1000)
+        self.ncob = cobparams.pop('ncob', 1000)
+        self.updatecob = cobparams.pop('updatecob', 1000)
+
+        self.sampler = ChangeOfBasisSampler
+
     def run(self):
         # initialise sampler
-        sampler = ChangeOfBasisSampler(self.ndim, self.targetdist.logpdf, (),
-                                       {}, startpca=np.inf)
-                                       # startpca=self.niterations/10,
-                                       # nupdatepca=self.niterations/10)
+        sampler = self.sampler(self.ndim, self.targetdist.logpdf, (),
+                               {}, startpca=self.firscob,
+                               nupdatepca=self.updatecob,
+                               npca=self.ncob)
 
         p0 = np.zeros(self.ndim)
         sampler.run_mcmc(self.niterations, p0)
-        chain = sampler.chain
 
         return sampler
 
@@ -34,7 +39,7 @@ class MultinormalTest(Test):
     Class implementing test on multinormal distribution.
     """
 
-    def __init__(self, nsteps, ndim=2, cov=None):
+    def __init__(self, nsteps, ndim=2, cov=None, cobparams={}):
         """
 
         :param int nsteps: number of MCMC iterations.
@@ -43,7 +48,7 @@ class MultinormalTest(Test):
          constructed.
         """
         target = Multinormal(ndim, cov)
-        super(MultinormalTest, self).__init__(ndim, target, nsteps)
+        super(MultinormalTest, self).__init__(ndim, target, nsteps, cobparams)
 
 
 class TargetDistribution(object):
@@ -82,3 +87,24 @@ class Multinormal(TargetDistribution):
 
     def logpdf(self, x):
         return self.dist.logpdf(x)
+
+
+class Rosenbrock(TargetDistribution):
+    """
+    Class implementing the Rosenbrock density.
+    """
+    def __init__(self, ndim):
+        self.ndim = ndim
+
+    @staticmethod
+    def pdf(x):
+        if (np.abs(x[0]) > 10) or (np.abs(x[1]) > 10):
+            return 0
+        return np.exp(-0.05*((1 - x[0])**2 + 100*(x[1] - x[0]**2)**2))
+
+    @staticmethod
+    def logpdf(x):
+        if (np.abs(x[0]) > 30) or (np.abs(x[1]) > 30):
+            return -np.inf
+        else:
+            return -0.05*((1 - x[0])**2 + 100*(x[1] - x[0]*x[0])**2)
