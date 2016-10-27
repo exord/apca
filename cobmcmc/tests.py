@@ -93,18 +93,28 @@ class Rosenbrock(TargetDistribution):
     """
     Class implementing the Rosenbrock density.
     """
-    def __init__(self, ndim):
+    def __init__(self, a=1, b=100, ndim=2):
+        self.a = a
+        self.b = b
         self.ndim = ndim
 
-    @staticmethod
-    def pdf(x):
+    def pdf(self, x):
         if (np.abs(x[0]) > 10) or (np.abs(x[1]) > 10):
             return 0
-        return np.exp(-0.05*((1 - x[0])**2 + 100*(x[1] - x[0]**2)**2))
+        return np.exp((self.a - x[0])**2 + self.b*(x[1] - x[0]**2)**2)
 
-    @staticmethod
-    def logpdf(x):
+    def logpdf(self, x):
         if (np.abs(x[0]) > 30) or (np.abs(x[1]) > 30):
             return -np.inf
         else:
-            return -0.05*((1 - x[0])**2 + 100*(x[1] - x[0]*x[0])**2)
+            return (self.a - x[0])**2 + self.b*(x[1] - x[0]*x[0])**2
+
+    def contour(self, k, n=1000):
+        """
+        :param k float: constant identifying contour.
+        :param int n: number of points used to construct contour.
+        """
+        x = np.linspace(self.a - k, self.a + k, n)
+        yplus = x**2 + np.sqrt( (k**2 - (x - self.a)**2)/self.b )
+        yminus = x ** 2 - np.sqrt((k ** 2 - (x - self.a) ** 2) / self.b)
+        return x, [yminus, yplus]
