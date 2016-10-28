@@ -51,6 +51,15 @@ class MultinormalTest(Test):
         super(MultinormalTest, self).__init__(ndim, target, nsteps, cobparams)
 
 
+class RosenbrockTest(Test):
+    """
+    Class implementing test on Rosenbrock density.
+    """
+    def __init__(self, nsteps, a=1, b=100, cobparams={}):
+        target = Rosenbrock(a, b, 2)
+        super(RosenbrockTest, self).__init__(2, target, nsteps, cobparams)
+
+
 class TargetDistribution(object):
     """
     Class for test target distributions.
