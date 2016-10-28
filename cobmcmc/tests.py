@@ -21,14 +21,14 @@ class Test(object):
 
         self.sampler = ChangeOfBasisSampler
 
-    def run(self):
+    def run(self, p0):
         # initialise sampler
         sampler = self.sampler(self.ndim, self.targetdist.logpdf, (),
                                {}, startpca=self.firscob,
                                nupdatepca=self.updatecob,
                                npca=self.ncob)
 
-        p0 = np.zeros(self.ndim)
+        # p0 = np.zeros(self.ndim)
         sampler.run_mcmc(self.niterations, p0)
 
         return sampler
@@ -39,7 +39,7 @@ class MultinormalTest(Test):
     Class implementing test on multinormal distribution.
     """
 
-    def __init__(self, nsteps, ndim=2, cov=None, cobparams={}):
+    def __init__(self, nsteps, ndim=2, mean=None, cov=None, cobparams={}):
         """
 
         :param int nsteps: number of MCMC iterations.
@@ -47,7 +47,7 @@ class MultinormalTest(Test):
         :param np.array cov: covariance matrix. If None, random covariance is
          constructed.
         """
-        target = Multinormal(ndim, cov)
+        target = Multinormal(ndim, mean, cov)
         super(MultinormalTest, self).__init__(ndim, target, nsteps, cobparams)
 
 
@@ -58,9 +58,17 @@ class TargetDistribution(object):
 
 
 class Multinormal(TargetDistribution):
-    def __init__(self, ndim=2, cov=None):
+    def __init__(self, ndim=2, mean=None, cov=None):
 
         self.ndim = ndim
+
+        if mean is None:
+            mean = np.zeros(ndim)
+        else:
+            assert len(mean) == ndim, 'Dimensions of mean arry do no match ' \
+                                      'of dimensions.'
+        self.mean = mean
+
         if cov is not None:
             assert cov.shape == (ndim, ndim), 'Dimensions of covariance ' \
                                               'matrix do no match.'
@@ -73,7 +81,6 @@ class Multinormal(TargetDistribution):
             self.cov += self.cov.T - np.diag(self.cov.diagonal())
             self.cov = np.dot(self.cov, self.cov)
 
-        self.mean = np.zeros(ndim)
         self.dist = scipy.stats.multivariate_normal(mean=self.mean,
                                                     cov=self.cov)
 
@@ -101,20 +108,39 @@ class Rosenbrock(TargetDistribution):
     def pdf(self, x):
         if (np.abs(x[0]) > 10) or (np.abs(x[1]) > 10):
             return 0
-        return np.exp((self.a - x[0])**2 + self.b*(x[1] - x[0]**2)**2)
+        return np.exp(-(self.a - x[0])**2 - self.b*(x[1] - x[0]**2)**2)
 
     def logpdf(self, x):
         if (np.abs(x[0]) > 30) or (np.abs(x[1]) > 30):
             return -np.inf
         else:
-            return (self.a - x[0])**2 + self.b*(x[1] - x[0]*x[0])**2
+            return -(self.a - x[0])**2 - self.b*(x[1] - x[0]*x[0])**2
 
     def contour(self, k, n=1000):
         """
-        :param k float: constant identifying contour.
+        :param float k: constant identifying contour.
         :param int n: number of points used to construct contour.
         """
         x = np.linspace(self.a - k, self.a + k, n)
         yplus = x**2 + np.sqrt( (k**2 - (x - self.a)**2)/self.b )
         yminus = x ** 2 - np.sqrt((k ** 2 - (x - self.a) ** 2) / self.b)
-        return x, [yminus, yplus]
+
+        xx = np.concatenate((x, x[::-1]))
+        yy = np.concatenate((yminus, yplus[::-1]))
+        return np.array([xx, yy])
+
+    def rvs(self, size=1):
+        """
+        Draw samples from the Rosenbrock density.
+        Uses the fact that p(x1,x2) = p(x2|x1)*p(x1) and that:
+        1) p(x1) \propto N(a, 1)
+        2) p(x2|x1) \propto N(x1**2, 1/sqrt(2*b))
+        """
+        # Draw samples from marginal p(x1)
+        x1 = np.random.randn(size) + self.a
+
+        # Draw samples from conditional, p(x2 | x1)
+        sigma = 1./np.sqrt(2 * self.b)
+        x2 = np.random.randn(size) * sigma + x1**2
+
+        return np.array([x1, x2]).T
